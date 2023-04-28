@@ -3,4 +3,4 @@
 /// https://textlambda.com/
 library tl_cipher;
 
-export 'src/tl_cipher_base.dart';
+export 'src/cipher.dart';

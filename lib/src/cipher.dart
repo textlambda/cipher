@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart' as archive;
-import 'package:sodium/sodium.dart' as na;
+import 'package:sodium/sodium_sumo.dart' as na;
 
 typedef Bytes = Uint8List;
 typedef HexString = String;
@@ -22,8 +22,8 @@ typedef PublicKey = Uint8List;
 /// Contains passphrase-encrypted-encryption-key and knows how to
 /// decrypt the encryption-key from the passphrase.
 class Peek {
-  final CipherBytes value;
-  final Pdekm meta;
+  final CipherBytes value; // passphrase encrypted encryption-key
+  final Pdekm meta; // metadata containing how encryption-key was encrypted
 
   Peek({
     required this.value,
@@ -31,7 +31,7 @@ class Peek {
   });
 
   factory Peek.create(
-      na.Sodium sodium, String passphrase, EncryptionKey encryptionKey) {
+      na.SodiumSumo sodium, String passphrase, EncryptionKey encryptionKey) {
     final meta = Pdekm(sodium);
     final pdek = meta.derive(sodium, passphrase);
     late final Peek peek;
@@ -54,7 +54,7 @@ class Peek {
   }
 
   EncryptionKey decrypt(
-    na.Sodium sodium,
+    na.SodiumSumo sodium,
     String passphrase,
   ) {
     final pdek = meta.derive(sodium, passphrase);
@@ -74,15 +74,20 @@ class Peek {
   }
 
   Bytes getGzippedValue() {
-    return gzip(value);
+    return _gzip(value);
   }
 
   Bytes getGzippedMeta() {
-    return gzip(stringToBytes(jsonEncode(meta)));
+    return _gzip(stringToBytes(jsonEncode(meta)));
   }
 }
 
 /// Passphrase Derived Encryption Key Meta
+///
+/// Used to derive an encryption key from a passphrase.
+///
+/// See https://doc.libsodium.org/key_derivation and
+///     https://doc.libsodium.org/password_hashing
 class Pdekm {
   late String sodiumVersion;
   late int outLen;
@@ -94,7 +99,7 @@ class Pdekm {
   late int subkeyLen;
 
   Pdekm(
-    na.Sodium sodium, {
+    na.SodiumSumo sodium, {
     int? outLen,
     int? memLimit,
     int? opsLimit,
@@ -140,7 +145,7 @@ class Pdekm {
         subkeyLen = json['subkey-len'];
 
   PassphraseDerivedEncryptionKey derive(
-    na.Sodium sodium,
+    na.SodiumSumo sodium,
     String passphrase,
   ) {
     final masterKey = sodium.crypto.pwhash.call(
@@ -188,16 +193,26 @@ class Pdekm {
   }
 }
 
-EncryptionKey generateEncryptionKey(na.Sodium sodium) {
+/// Generates a new encryption key
+///
+/// See https://doc.libsodium.org/secret-key_cryptography/aead
+EncryptionKey generateEncryptionKey(na.SodiumSumo sodium) {
   return sodium.crypto.aead.keygen();
 }
 
-KeyPair generatePkcKeyPair(na.Sodium sodium) {
+/// Generates a new key-pair for public-key-cryptography.
+///
+/// See https://doc.libsodium.org/public-key_cryptography/authenticated_encryption
+KeyPair generatePkcKeyPair(na.SodiumSumo sodium) {
   return sodium.crypto.box.keyPair();
 }
 
+/// Encrypts a string using given encryption-key.
+///
+/// If bytesThresholdForGzip is provided, the string is gzipped before encryption
+/// if it exceeds the given bytesThresholdForGzip.
 CipherBytes encryptString(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   EncryptionKey encryptionKey,
   PlainString plainString, {
   int? bytesThresholdForGzip,
@@ -207,8 +222,12 @@ CipherBytes encryptString(
       bytesThresholdForGzip: bytesThresholdForGzip);
 }
 
+/// Encrypts given data (as bytes) using given encryption-key.
+///
+/// If bytesThresholdForGzip is provided, the data is gzipped before encryption
+/// if it exceeds the given bytesThresholdForGzip.
 CipherBytes encrypt(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   EncryptionKey encryptionKey,
   PlainBytes plainBytes, {
   int? bytesThresholdForGzip,
@@ -217,7 +236,7 @@ CipherBytes encrypt(
 
   if (bytesThresholdForGzip != null &&
       plainBytes.length >= bytesThresholdForGzip) {
-    plainBytes = gzip(plainBytes);
+    plainBytes = _gzip(plainBytes);
   }
 
   final cipherBytes = sodium.crypto.aead.encrypt(
@@ -226,11 +245,15 @@ CipherBytes encrypt(
     key: encryptionKey,
   );
 
-  return attachNonce(nonce, cipherBytes);
+  return _attachNonce(nonce, cipherBytes);
 }
 
+/// Decrypts given (encrypted) bytes using given encryption key, returning the utf8 decoded string.
+///
+/// After decryption, if the bytes were found to be gzipped, they are un-gzipped
+/// before returning the utf8-decoded string version.
 PlainString decryptToString(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   EncryptionKey encryptionKey,
   CipherBytes cipherBytes,
 ) {
@@ -238,8 +261,12 @@ PlainString decryptToString(
   return bytesToString(plainBytes);
 }
 
+/// Decrypts given (encrypted) bytes using given encryption key.
+///
+/// After decryption, if the bytes were found to be gzipped, they are un-gzipped
+/// before returning.
 PlainBytes decrypt(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   EncryptionKey encryptionKey,
   CipherBytes cipherBytes,
 ) {
@@ -248,15 +275,16 @@ PlainBytes decrypt(
   Bytes nonce = cipherBytes.sublist(0, nonceSize);
   Bytes cipherText = cipherBytes.sublist(nonceSize);
 
-  return gunzipIfGzipped(sodium.crypto.aead.decrypt(
+  return _gunzipIfGzipped(sodium.crypto.aead.decrypt(
     cipherText: cipherText,
     nonce: nonce,
     key: encryptionKey,
   ));
 }
 
+/// Encrypts a string message using given private-key/public-key pair.
 CipherBytes pkcEncryptString(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PrivateKey senderPrivateKey,
   PublicKey receiverPublicKey,
   String plainString,
@@ -265,8 +293,9 @@ CipherBytes pkcEncryptString(
   return pkcEncrypt(sodium, senderPrivateKey, receiverPublicKey, plainBytes);
 }
 
+/// Encrypts message bytes using given private-key/public-key pair.
 CipherBytes pkcEncrypt(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PrivateKey senderPrivateKey,
   PublicKey receiverPublicKey,
   PlainBytes plainBytes,
@@ -279,11 +308,12 @@ CipherBytes pkcEncrypt(
     secretKey: senderPrivateKey,
   );
 
-  return attachNonce(nonce, encryptedBytes);
+  return _attachNonce(nonce, encryptedBytes);
 }
 
+/// Decrypts message bytes using given private-key/public-key pair and returns the utf8-decoded string.
 PlainString pkcDecryptToString(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PublicKey senderPublicKey,
   PrivateKey receiverPrivateKey,
   CipherBytes cipherBytes,
@@ -298,8 +328,9 @@ PlainString pkcDecryptToString(
   return bytesToString(plainBytes);
 }
 
+/// Decrypts message bytes using given private-key/public-key pair.
 PlainBytes pkcDecrypt(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PublicKey senderPublicKey,
   PrivateKey receiverPrivateKey,
   CipherBytes cipherBytes,
@@ -317,8 +348,12 @@ PlainBytes pkcDecrypt(
   );
 }
 
+/// Encrypts message bytes using receiver's public-key and an ephemeral secret key,
+/// which is discarded right after encryption.
+///
+/// See https://doc.libsodium.org/public-key_cryptography/sealed_boxes
 CipherBytes pkcAnonymousEncrypt(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PublicKey receiverPublicKey,
   PlainBytes plainBytes,
 ) {
@@ -330,8 +365,11 @@ CipherBytes pkcAnonymousEncrypt(
   return encryptedBytes;
 }
 
+/// Decrypts a message sent using given public-key/private-key pair, returning utf8-decoded string.
+///
+/// See https://doc.libsodium.org/public-key_cryptography/sealed_boxes
 PlainString pkcAnonymousDecryptToString(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PublicKey receiverPublicKey,
   PrivateKey receiverPrivateKey,
   CipherBytes cipherBytes,
@@ -345,8 +383,11 @@ PlainString pkcAnonymousDecryptToString(
   return bytesToString(plainBytes);
 }
 
+/// Decrypts a message sent using given public-key/private-key pair.
+///
+/// See https://doc.libsodium.org/public-key_cryptography/sealed_boxes
 PlainBytes pkcAnonymousDecrypt(
-  na.Sodium sodium,
+  na.SodiumSumo sodium,
   PublicKey receiverPublicKey,
   PrivateKey receiverPrivateKey,
   CipherBytes cipherBytes,
@@ -358,19 +399,28 @@ PlainBytes pkcAnonymousDecrypt(
   );
 }
 
-Bytes attachNonce(Bytes nonce, CipherBytes cipherBytes) {
-  return Bytes.fromList(nonce + cipherBytes);
-}
-
-Bytes generateRandomBytes(na.Sodium sodium, int length) {
+/// Returns random bytes of given length.
+Bytes generateRandomBytes(na.SodiumSumo sodium, int length) {
   return sodium.randombytes.buf(length);
 }
 
-String generateRandomPassphrase(na.Sodium sodium, int length) {
+/// Returns a random passphrase of given length;
+String generateRandomPassphrase(na.SodiumSumo sodium, int length) {
   return bytesToB64(generateRandomBytes(
     sodium,
     sodium.crypto.aead.nonceBytes,
   )).substring(0, length);
+}
+
+class EncryptionError implements Exception {
+  final String? message;
+
+  EncryptionError([this.message]);
+
+  @override
+  String toString() {
+    return message ?? 'Invalid passphrase';
+  }
 }
 
 Bytes stringToBytes(String s) {
@@ -386,16 +436,23 @@ String bytesToB64(Bytes bytes) {
 }
 
 Bytes b64ToBytes(String b64String) {
-  return gunzipIfGzipped(base64Decode(b64String));
+  return _gunzipIfGzipped(base64Decode(b64String));
 }
 
-bool isGzipped(PlainBytes plainBytes) {
+///
+/// Some private utility functions.
+///
+Bytes _attachNonce(Bytes nonce, CipherBytes cipherBytes) {
+  return Bytes.fromList(nonce + cipherBytes);
+}
+
+bool _isGzipped(PlainBytes plainBytes) {
   return (plainBytes.length >= 2 &&
       plainBytes[0] == 0x1F &&
       plainBytes[1] == 0x8B);
 }
 
-Bytes gzip(Bytes bytes) {
+Bytes _gzip(Bytes bytes) {
   final gzipped = archive.GZipEncoder().encode(bytes);
   if (gzipped == null) {
     throw const FormatException("Could not gzip content");
@@ -403,22 +460,11 @@ Bytes gzip(Bytes bytes) {
   return Uint8List.fromList(gzipped);
 }
 
-Bytes gunzipIfGzipped(Bytes bytes) {
-  if (!isGzipped(bytes)) return bytes;
+Bytes _gunzipIfGzipped(Bytes bytes) {
+  if (!_isGzipped(bytes)) return bytes;
   try {
     return Uint8List.fromList(archive.GZipDecoder().decodeBytes(bytes));
   } on archive.ArchiveException {
     return bytes;
-  }
-}
-
-class EncryptionError implements Exception {
-  final String? message;
-
-  EncryptionError([this.message]);
-
-  @override
-  String toString() {
-    return message ?? 'Invalid passphrase';
   }
 }

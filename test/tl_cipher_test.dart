@@ -1,15 +1,12 @@
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:typed_data';
 
-import 'package:sodium/sodium.dart' as na;
+import 'package:sodium/sodium_sumo.dart' as na;
 import 'package:test/test.dart';
 import 'package:tl_cipher/tl_cipher.dart' as cipher;
 
 void main() async {
-  final libSodium = openLibSodium();
-  final sodium = await na.SodiumInit.init(libSodium);
+  final sodium = await na.SodiumSumoInit.init2(openLibSodium);
 
   var passphrase = 'test-passphrase';
   var encryptionKey = cipher.generateEncryptionKey(sodium);
@@ -86,20 +83,6 @@ void main() async {
       );
       expect(decrypted, plainString);
       pkcKeyPair.secretKey.dispose();
-    });
-  });
-
-  group('cipher-utilities', () {
-    test('gzip', () {
-      String content = "testing zip";
-      var contentBytes = Uint8List.fromList(utf8.encode(content));
-
-      expect(cipher.isGzipped(contentBytes), false);
-      var gzippedContent = cipher.gzip(contentBytes);
-      expect(cipher.isGzipped(gzippedContent), true);
-
-      expect(cipher.gunzipIfGzipped(contentBytes), contentBytes);
-      expect(cipher.gunzipIfGzipped(gzippedContent), contentBytes);
     });
   });
 }
