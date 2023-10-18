@@ -58,12 +58,12 @@ class Peek {
     String passphrase,
   ) {
     final pdek = meta.derive(sodium, passphrase);
-    final nonceSize = sodium.crypto.aead.nonceBytes;
+    final nonceSize = sodium.crypto.aeadXChaCha20Poly1305IETF.nonceBytes;
 
     Bytes nonce = value.sublist(0, nonceSize);
     Bytes cipherText = value.sublist(nonceSize);
 
-    final decrypted = sodium.crypto.aead.decrypt(
+    final decrypted = sodium.crypto.aeadXChaCha20Poly1305IETF.decrypt(
       cipherText: cipherText,
       nonce: nonce,
       key: pdek,
@@ -112,13 +112,14 @@ class Pdekm {
 
     sodiumVersion = sodium.version.toString();
 
-    this.outLen = outLen ?? sodium.crypto.aead.keyBytes;
+    this.outLen = outLen ?? sodium.crypto.aeadXChaCha20Poly1305IETF.keyBytes;
     this.memLimit = memLimit ?? pwhash.memLimitMin;
     this.opsLimit = opsLimit ?? pwhash.opsLimitInteractive;
     this.salt = salt ?? generateRandomBytes(sodium, pwhash.saltBytes);
     this.subkeyContext = subkeyContext ?? 'derived';
     this.subkeyId = subkeyId ?? 0;
-    this.subkeyLen = subkeyLen ?? sodium.crypto.aead.keyBytes;
+    this.subkeyLen =
+        subkeyLen ?? sodium.crypto.aeadXChaCha20Poly1305IETF.keyBytes;
   }
 
   Map<String, dynamic> toJson() {
@@ -197,7 +198,7 @@ class Pdekm {
 ///
 /// See https://doc.libsodium.org/secret-key_cryptography/aead
 EncryptionKey generateEncryptionKey(na.SodiumSumo sodium) {
-  return sodium.crypto.aead.keygen();
+  return sodium.crypto.aeadXChaCha20Poly1305IETF.keygen();
 }
 
 /// Generates a new key-pair for public-key-cryptography.
@@ -232,14 +233,17 @@ CipherBytes encrypt(
   PlainBytes plainBytes, {
   int? bytesThresholdForGzip,
 }) {
-  final nonce = generateRandomBytes(sodium, sodium.crypto.aead.nonceBytes);
+  final nonce = generateRandomBytes(
+    sodium,
+    sodium.crypto.aeadXChaCha20Poly1305IETF.nonceBytes,
+  );
 
   if (bytesThresholdForGzip != null &&
       plainBytes.length >= bytesThresholdForGzip) {
     plainBytes = _gzip(plainBytes);
   }
 
-  final cipherBytes = sodium.crypto.aead.encrypt(
+  final cipherBytes = sodium.crypto.aeadXChaCha20Poly1305IETF.encrypt(
     message: plainBytes,
     nonce: nonce,
     key: encryptionKey,
@@ -270,12 +274,12 @@ PlainBytes decrypt(
   EncryptionKey encryptionKey,
   CipherBytes cipherBytes,
 ) {
-  int nonceSize = sodium.crypto.aead.nonceBytes;
+  int nonceSize = sodium.crypto.aeadXChaCha20Poly1305IETF.nonceBytes;
 
   Bytes nonce = cipherBytes.sublist(0, nonceSize);
   Bytes cipherText = cipherBytes.sublist(nonceSize);
 
-  return _gunzipIfGzipped(sodium.crypto.aead.decrypt(
+  return _gunzipIfGzipped(sodium.crypto.aeadXChaCha20Poly1305IETF.decrypt(
     cipherText: cipherText,
     nonce: nonce,
     key: encryptionKey,
@@ -408,7 +412,7 @@ Bytes generateRandomBytes(na.SodiumSumo sodium, int length) {
 String generateRandomPassphrase(na.SodiumSumo sodium, int length) {
   return bytesToB64(generateRandomBytes(
     sodium,
-    sodium.crypto.aead.nonceBytes,
+    sodium.crypto.aeadXChaCha20Poly1305IETF.nonceBytes,
   )).substring(0, length);
 }
 
