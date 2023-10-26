@@ -66,6 +66,26 @@ void main() async {
       expect(decrypted, plainString);
     });
 
+    test('hash', () {
+      final key = encryptionKey;
+      final anotherKey = cipher.generateEncryptionKey(sodium);
+
+      final a = cipher.hashString(sodium, key, "hello");
+      final b = cipher.hashString(sodium, key, "hello");
+      final c = cipher.hashString(sodium, key, "world");
+      final d = cipher.hashString(sodium, anotherKey, "hello");
+
+      expect(a.length, b.length);
+      expect(b.length, c.length);
+
+      expect(cipher.bytesToB64(a), cipher.bytesToB64(b));
+      expect(cipher.bytesToB64(b) != cipher.bytesToB64(c), true);
+
+      expect(a.length, d.length);
+      // d was hashed using a different key so should be different from a
+      expect(cipher.bytesToB64(a) != cipher.bytesToB64(d), true);
+    });
+
     test('pkc-encrypt-decrypt', () {
       var plainString = 'secret message using pkc';
       var pkcKeyPair = cipher.generatePkcKeyPair(sodium);

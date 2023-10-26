@@ -5,13 +5,13 @@ import 'package:archive/archive.dart' as archive;
 import 'package:sodium/sodium_sumo.dart' as na;
 
 typedef Bytes = Uint8List;
-typedef HexString = String;
 
 typedef CipherBytes = Bytes;
 typedef PlainBytes = Bytes;
 typedef PlainString = String;
 
 typedef EncryptionKey = na.SecureKey;
+typedef HashKey = na.SecureKey;
 typedef KeyPair = na.KeyPair;
 typedef PassphraseDerivedEncryptionKey = EncryptionKey;
 typedef PrivateKey = na.SecureKey;
@@ -31,7 +31,10 @@ class Peek {
   });
 
   factory Peek.create(
-      na.SodiumSumo sodium, String passphrase, EncryptionKey encryptionKey) {
+    na.SodiumSumo sodium,
+    String passphrase,
+    EncryptionKey encryptionKey,
+  ) {
     final meta = Pdekm(sodium);
     final pdek = meta.derive(sodium, passphrase);
     late final Peek peek;
@@ -284,6 +287,39 @@ PlainBytes decrypt(
     nonce: nonce,
     key: encryptionKey,
   ));
+}
+
+///
+/// Computes a hash of a message.
+///
+/// The key should be at least crypto_generichash_KEYBYTES_MIN (crypto_generichash_blake2b_KEYBYTES_MIN is 16)
+/// if it is meant to be a secret. See https://libsodium.gitbook.io/doc/hashing/generic_hashing.
+///
+/// The passphrase derived key is sodium.crypto.aeadXChaCha20Poly1305IETF.keyBytes is 32 so should be safe to use.
+///
+Bytes hash(
+  na.SodiumSumo sodium,
+  HashKey key,
+  PlainBytes message,
+) {
+  return sodium.crypto.genericHash(
+    message: message,
+    key: key,
+    outLen: sodium.crypto.genericHash.bytes,
+  );
+}
+
+///
+/// Computes a hash of a string message.
+///
+/// A convenience wrapper for [hash] function.
+///
+Bytes hashString(
+  na.SodiumSumo sodium,
+  HashKey key,
+  PlainString message,
+) {
+  return hash(sodium, key, stringToBytes(message));
 }
 
 /// Encrypts a string message using given private-key/public-key pair.
