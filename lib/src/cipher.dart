@@ -98,7 +98,7 @@ class Pdekm {
   late int opsLimit;
   late Bytes salt;
   late String subkeyContext;
-  late int subkeyId;
+  late BigInt subkeyId;
   late int subkeyLen;
 
   Pdekm(
@@ -108,7 +108,7 @@ class Pdekm {
     int? opsLimit,
     Bytes? salt,
     String? subkeyContext,
-    int? subkeyId,
+    BigInt? subkeyId,
     int? subkeyLen,
   }) {
     final pwhash = sodium.crypto.pwhash;
@@ -120,7 +120,7 @@ class Pdekm {
     this.opsLimit = opsLimit ?? pwhash.opsLimitInteractive;
     this.salt = salt ?? generateRandomBytes(sodium, pwhash.saltBytes);
     this.subkeyContext = subkeyContext ?? 'derived';
-    this.subkeyId = subkeyId ?? 0;
+    this.subkeyId = subkeyId ?? BigInt.zero;
     this.subkeyLen =
         subkeyLen ?? sodium.crypto.aeadXChaCha20Poly1305IETF.keyBytes;
   }
@@ -133,7 +133,7 @@ class Pdekm {
       'ops-limit': opsLimit,
       'salt': bytesToB64(salt),
       'subkey-context': subkeyContext,
-      'subkey-id': subkeyId,
+      'subkey-id': subkeyId.toString(), // serialize bigint as string
       'subkey-len': subkeyLen,
     };
   }
@@ -145,7 +145,8 @@ class Pdekm {
         opsLimit = json['ops-limit'],
         salt = b64ToBytes(json['salt']),
         subkeyContext = json['subkey-context'],
-        subkeyId = json['subkey-id'],
+        subkeyId = BigInt.parse(json['subkey-id']
+            .toString()), // in case we are reading older version, which stored int instead of bigint
         subkeyLen = json['subkey-len'];
 
   PassphraseDerivedEncryptionKey derive(

@@ -6,7 +6,7 @@ import 'package:test/test.dart';
 import 'package:tl_cipher/tl_cipher.dart' as cipher;
 
 void main() async {
-  final sodium = await na.SodiumSumoInit.init2(openLibSodium);
+  final sodium = await na.SodiumSumoInit.init(openLibSodium);
 
   var passphrase = 'test-passphrase';
   var encryptionKey = cipher.generateEncryptionKey(sodium);
